@@ -608,6 +608,50 @@ void diff_get_merge_base(const struct rev_info *revs, struct object_id *mb)
 	free_commit_list(merge_bases);
 }
 
+void diff_get_merge_base2(const struct rev_info *revs, struct object_id *mb, unsigned *mbtype)
+{
+	int i;
+	struct commit *mb_child[2] = {0};
+	struct commit_list *merge_bases = NULL;
+
+	for (i = 0; i < revs->pending.nr; i++) {
+		struct object *obj = revs->pending.objects[i].item;
+		if (obj->flags)
+			die(_("--merge-base does not work with ranges"));
+	}
+
+	/*
+	 * This check must go after the for loop above because A...B
+	 * ranges produce three pending commits, resulting in a
+	 * misleading error message.
+	 */
+	if (revs->pending.nr < 1 || revs->pending.nr > 2)
+		BUG("unexpected revs->pending.nr: %d", revs->pending.nr);
+
+	for (i = 0; i < revs->pending.nr; i++)
+		mb_child[i] = lookup_commit_reference(the_repository, &revs->pending.objects[i].item->oid);
+	if (revs->pending.nr == 1) {
+		struct object_id oid;
+
+		if (repo_get_oid(the_repository, "HEAD", &oid))
+			die(_("unable to get HEAD"));
+
+		mb_child[1] = lookup_commit_reference(the_repository, &oid);
+	}
+
+	if (repo_get_merge_bases(the_repository, mb_child[0], mb_child[1], &merge_bases) < 0)
+		exit(128);
+	if (!merge_bases)
+		die(_("no merge base found"));
+	if (merge_bases->next)
+		die(_("multiple merge bases found"));
+
+	oidcpy(mb, &merge_bases->item->object.oid);
+	*mbtype=merge_bases->item->object.type;
+
+	free_commit_list(merge_bases);
+}
+
 void run_diff_index(struct rev_info *revs, unsigned int option)
 {
 	struct object_array_entry *ent;

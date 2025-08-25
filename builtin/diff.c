@@ -25,6 +25,7 @@
 #include "setup.h"
 #include "oid-array.h"
 #include "tree.h"
+#include "hex.h"
 
 #define DIFF_NO_INDEX_EXPLICIT 1
 #define DIFF_NO_INDEX_IMPLICIT 2
@@ -170,14 +171,32 @@ static void builtin_diff_index(struct rev_info *revs,
 	run_diff_index(revs, option);
 }
 
+struct symdiff {
+	struct bitmap *skip;
+	int warn;
+	const char *base, *left, *right;
+	struct object_array_entry *ent0, *ent1;
+};
+
 static void builtin_diff_tree(struct rev_info *revs,
 			      int argc, const char **argv,
-			      struct object_array_entry *ent0,
-			      struct object_array_entry *ent1)
+			      struct object_array_entry *ent0, // I would rather encapsulate this with original object
+			      struct object_array_entry *ent1,
+			      struct symdiff *sdiff)
 {
 	const struct object_id *(oid[2]);
 	struct object_id mb_oid;
 	int merge_base = 0;
+	const struct object_id *(r[2]);
+	unsigned type[2]; // XXX for debug
+	
+
+	// XXX	
+	for (int i=0; i<revs->pending.nr; i++) {
+		struct object_array_entry *o = &revs->pending.objects[i];
+		printf("%d %s %s %s\n", i, o->name, 
+			oid_to_hex(&o->item->oid), type_name(o->item->type));
+	}
 
 	while (1 < argc) {
 		const char *arg = argv[1];
@@ -189,9 +208,12 @@ static void builtin_diff_tree(struct rev_info *revs,
 	}
 
 	if (merge_base) {
-		diff_get_merge_base(revs, &mb_oid);
+		diff_get_merge_base2(revs, &mb_oid, &type[0]);
 		oid[0] = &mb_oid;
 		oid[1] = &revs->pending.objects[1].item->oid;
+		type[1] = revs->pending.objects[1].item->type; // XXX debug
+		r[0] = oid[0]; // XXX  --merge-base implies type==OBJ_COMMIT
+		r[1] = oid[1];
 	} else {
 		int swap = 0;
 
@@ -199,13 +221,34 @@ static void builtin_diff_tree(struct rev_info *revs,
 		 * We saw two trees, ent0 and ent1.  If ent1 is uninteresting,
 		 * swap them.
 		 */
-		if (ent1->item->flags & UNINTERESTING)
+		if (ent1->item->flags & UNINTERESTING) {
+			warning("SWAP"); // XXX: WHEN DOES THIS HAPPEN?
 			swap = 1;
+		}
 		oid[swap] = &ent0->item->oid;
 		oid[1 - swap] = &ent1->item->oid;
+		
+		if (sdiff->skip) { // XXX symmetric diff will have 3+ revs; it's simplest to reuse the symdiff result
+			r[swap] = &sdiff->ent0->item->oid;
+			r[1 - swap] = &sdiff->ent1->item->oid;
+			type[swap] = sdiff->ent0->item->type;
+			type[1 - swap] = sdiff->ent1->item->type;
+		} else {
+			r[swap] = &revs->pending.objects[0].item->oid; // XXX assuming 2 revs, reach back up to commits
+			r[1 - swap] = &revs->pending.objects[1].item->oid;
+			type[swap] = revs->pending.objects[0].item->type;
+			type[1 - swap] = revs->pending.objects[1].item->type;
+		}
 	}
-	diff_tree_oid(oid[0], oid[1], "", &revs->diffopt);
-	log_tree_diff_flush(revs);
+
+	warning(_("ent0->name='%s' r0='%s' type0='%s'"), ent0->name, oid_to_hex(r[0]), type_name(type[0]));
+	warning(_("ent1->name='%s' r1='%s' type1='%s'"), ent1->name, oid_to_hex(r[1]), type_name(type[1]));
+	warning(_("merge_base=%d"), merge_base);
+	warning(_("oid0='%s' oid1='%s'"), oid_to_hex(oid[0]), oid_to_hex(oid[1]));
+
+	
+	diff_tree_oid(oid[0], oid[1], "", &revs->diffopt); // XXX the merge-base option implies that either TREE or COMMIT could reach here
+	log_tree_diff_flush(revs); // TODO Smuggle the answers via revs->diffopt down to run_diff
 }
 
 static void builtin_diff_combined(struct rev_info *revs,
@@ -288,12 +331,6 @@ static void builtin_diff_files(struct rev_info *revs, int argc, const char **arg
 	}
 	run_diff_files(revs, options);
 }
-
-struct symdiff {
-	struct bitmap *skip;
-	int warn;
-	const char *base, *left, *right;
-};
 
 /*
  * Check for symmetric-difference arguments, and if present, arrange
@@ -389,6 +426,8 @@ static void symdiff_prepare(struct rev_info *rev, struct symdiff *sym)
 	bitmap_unset(map, basepos);	/* unmark the base we want */
 	sym->warn = basecount > 1;
 	sym->skip = map;
+	sym->ent0 = &rev->pending.objects[basepos];
+	sym->ent1 = &rev->pending.objects[rpos];
 }
 
 static void symdiff_release(struct symdiff *sdiff)
@@ -590,6 +629,9 @@ int cmd_diff(int argc,
 	if (rev.prune_data.nr)
 		paths += rev.prune_data.nr;
 
+	// XXX WIP
+	warning(_("ent.nr=%d blobs=%d"), ent.nr, blobs);
+
 	/*
 	 * Now, do the arguments look reasonable?
 	 */
@@ -621,7 +663,7 @@ int cmd_diff(int argc,
 			warning(_("%s...%s: multiple merge bases, using %s"),
 				sdiff.left, sdiff.right, sdiff.base);
 		builtin_diff_tree(&rev, argc, argv,
-				  &ent.objects[0], &ent.objects[1]);
+				  &ent.objects[0], &ent.objects[1], &sdiff);
 	} else
 		builtin_diff_combined(&rev, argc, argv,
 				      ent.objects, ent.nr,
