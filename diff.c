@@ -46,6 +46,7 @@
 #include "setup.h"
 #include "strmap.h"
 #include "ws.h"
+#include "hash.h"
 
 #ifdef NO_FAST_WORKING_DIRECTORY
 #define FAST_WORKING_DIRECTORY 0
@@ -4427,13 +4428,22 @@ static void run_external_diff(const struct external_diff *pgm,
 		if (other) {
 			strvec_push(&cmd.args, other);
 			if (xfrm_msg)
-				strvec_push(&cmd.args, xfrm_msg);
+				strvec_push(&cmd.args, xfrm_msg); // XXX does this provide useful metadata?
 		}
 	}
 
 	strvec_pushf(&cmd.env, "GIT_DIFF_PATH_COUNTER=%d",
 		     ++o->diff_path_counter);
 	strvec_pushf(&cmd.env, "GIT_DIFF_PATH_TOTAL=%d", q->nr);
+
+	if (o->why.oid[0] && o->why.oid[1]) {
+		strvec_pushf(&cmd.env, "GIT_DIFF_REV_ONE=%s", oid_to_hex(o->why.oid[0]));
+		strvec_pushf(&cmd.env, "GIT_DIFF_REV_TWO=%s", oid_to_hex(o->why.oid[1]));
+
+		strvec_pushf(&cmd.env, "GIT_DIFF_FILESPEC_ONE_PATH=%s", one->path);
+		strvec_pushf(&cmd.env, "GIT_DIFF_FILESPEC_TWO_PATH=%s", two->path);
+	}
+
 
 	diff_free_filespec_data(one);
 	diff_free_filespec_data(two);

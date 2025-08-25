@@ -187,16 +187,16 @@ static void builtin_diff_tree(struct rev_info *revs,
 	const struct object_id *(oid[2]);
 	struct object_id mb_oid;
 	int merge_base = 0;
-	const struct object_id *(r[2]);
-	unsigned type[2]; // XXX for debug
+	const struct object_id *(r[2]); // oid closest to rev_info - tag/commit if known - corresponding to oid[]
+//	unsigned type[2]; // XXX for debug
 	
 
 	// XXX	
-	for (int i=0; i<revs->pending.nr; i++) {
-		struct object_array_entry *o = &revs->pending.objects[i];
-		printf("%d %s %s %s\n", i, o->name, 
-			oid_to_hex(&o->item->oid), type_name(o->item->type));
-	}
+//	for (int i=0; i<revs->pending.nr; i++) {
+//		struct object_array_entry *o = &revs->pending.objects[i];
+//		printf("%d %s %s %s\n", i, o->name,
+//			oid_to_hex(&o->item->oid), type_name(o->item->type));
+//	}
 
 	while (1 < argc) {
 		const char *arg = argv[1];
@@ -208,10 +208,11 @@ static void builtin_diff_tree(struct rev_info *revs,
 	}
 
 	if (merge_base) {
-		diff_get_merge_base2(revs, &mb_oid, &type[0]);
+		diff_get_merge_base(revs, &mb_oid);
+//		diff_get_merge_base2(revs, &mb_oid, &type[0]);
 		oid[0] = &mb_oid;
 		oid[1] = &revs->pending.objects[1].item->oid;
-		type[1] = revs->pending.objects[1].item->type; // XXX debug
+//		type[1] = revs->pending.objects[1].item->type; // XXX debug
 		r[0] = oid[0]; // XXX  --merge-base implies type==OBJ_COMMIT
 		r[1] = oid[1];
 	} else {
@@ -231,24 +232,34 @@ static void builtin_diff_tree(struct rev_info *revs,
 		if (sdiff->skip) { // XXX symmetric diff will have 3+ revs; it's simplest to reuse the symdiff result
 			r[swap] = &sdiff->ent0->item->oid;
 			r[1 - swap] = &sdiff->ent1->item->oid;
-			type[swap] = sdiff->ent0->item->type;
-			type[1 - swap] = sdiff->ent1->item->type;
+//			type[swap] = sdiff->ent0->item->type;
+//			type[1 - swap] = sdiff->ent1->item->type;
 		} else {
-			r[swap] = &revs->pending.objects[0].item->oid; // XXX assuming 2 revs, reach back up to commits
+			// XXX assuming 2 revs, reach back up to commits
+			if (revs->pending.nr != 2)
+				BUG("unexpected revs->pending.nr: %d", revs->pending.nr);
+			r[swap] = &revs->pending.objects[0].item->oid;
 			r[1 - swap] = &revs->pending.objects[1].item->oid;
-			type[swap] = revs->pending.objects[0].item->type;
-			type[1 - swap] = revs->pending.objects[1].item->type;
+//			type[swap] = revs->pending.objects[0].item->type;
+//			type[1 - swap] = revs->pending.objects[1].item->type;
 		}
 	}
 
-	warning(_("ent0->name='%s' r0='%s' type0='%s'"), ent0->name, oid_to_hex(r[0]), type_name(type[0]));
-	warning(_("ent1->name='%s' r1='%s' type1='%s'"), ent1->name, oid_to_hex(r[1]), type_name(type[1]));
-	warning(_("merge_base=%d"), merge_base);
-	warning(_("oid0='%s' oid1='%s'"), oid_to_hex(oid[0]), oid_to_hex(oid[1]));
+//	warning(_("ent0->name='%s' r0='%s' type0='%s'"), ent0->name, oid_to_hex(r[0]), type_name(type[0]));
+//	warning(_("ent1->name='%s' r1='%s' type1='%s'"), ent1->name, oid_to_hex(r[1]), type_name(type[1]));
+//	warning(_("merge_base=%d"), merge_base);
+//	warning(_("oid0='%s' oid1='%s'"), oid_to_hex(oid[0]), oid_to_hex(oid[1]));
 
+	revs->diffopt.why.mode = "diff_tree";
+	revs->diffopt.why.oid[0] = r[0];
+	revs->diffopt.why.oid[1] = r[1];
 	
 	diff_tree_oid(oid[0], oid[1], "", &revs->diffopt); // XXX the merge-base option implies that either TREE or COMMIT could reach here
 	log_tree_diff_flush(revs); // TODO Smuggle the answers via revs->diffopt down to run_diff
+
+	revs->diffopt.why.mode = NULL;
+	revs->diffopt.why.oid[0] = NULL;
+	revs->diffopt.why.oid[1] = NULL;
 }
 
 static void builtin_diff_combined(struct rev_info *revs,
