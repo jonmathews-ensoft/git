@@ -641,7 +641,7 @@ int cmd_diff(int argc,
 		paths += rev.prune_data.nr;
 
 	// XXX WIP
-	warning(_("ent.nr=%d blobs=%d"), ent.nr, blobs);
+//	warning(_("ent.nr=%d blobs=%d"), ent.nr, blobs);
 
 	/*
 	 * Now, do the arguments look reasonable?

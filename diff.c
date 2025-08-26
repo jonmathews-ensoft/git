@@ -4437,11 +4437,13 @@ static void run_external_diff(const struct external_diff *pgm,
 	strvec_pushf(&cmd.env, "GIT_DIFF_PATH_TOTAL=%d", q->nr);
 
 	if (o->why.oid[0] && o->why.oid[1]) {
+		strvec_pushf(&cmd.env, "GIT_DIFF_MODE=%s", o->why.mode);
+
 		strvec_pushf(&cmd.env, "GIT_DIFF_REV_ONE=%s", oid_to_hex(o->why.oid[0]));
 		strvec_pushf(&cmd.env, "GIT_DIFF_REV_TWO=%s", oid_to_hex(o->why.oid[1]));
 
-		strvec_pushf(&cmd.env, "GIT_DIFF_FILESPEC_ONE_PATH=%s", one->path);
-		strvec_pushf(&cmd.env, "GIT_DIFF_FILESPEC_TWO_PATH=%s", two->path);
+		strvec_pushf(&cmd.env, "GIT_DIFF_FILESPEC_PATH_ONE=%s", one->path);
+		strvec_pushf(&cmd.env, "GIT_DIFF_FILESPEC_PATH_TWO=%s", two->path);
 	}
 
 
