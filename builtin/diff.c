@@ -188,15 +188,6 @@ static void builtin_diff_tree(struct rev_info *revs,
 	struct object_id mb_oid;
 	int merge_base = 0;
 	const struct object_id *(r[2]); // oid closest to rev_info - tag/commit if known - corresponding to oid[]
-//	unsigned type[2]; // XXX for debug
-	
-
-	// XXX	
-//	for (int i=0; i<revs->pending.nr; i++) {
-//		struct object_array_entry *o = &revs->pending.objects[i];
-//		printf("%d %s %s %s\n", i, o->name,
-//			oid_to_hex(&o->item->oid), type_name(o->item->type));
-//	}
 
 	while (1 < argc) {
 		const char *arg = argv[1];
@@ -209,11 +200,9 @@ static void builtin_diff_tree(struct rev_info *revs,
 
 	if (merge_base) {
 		diff_get_merge_base(revs, &mb_oid);
-//		diff_get_merge_base2(revs, &mb_oid, &type[0]);
 		oid[0] = &mb_oid;
 		oid[1] = &revs->pending.objects[1].item->oid;
-//		type[1] = revs->pending.objects[1].item->type; // XXX debug
-		r[0] = oid[0]; // XXX  --merge-base implies type==OBJ_COMMIT
+		r[0] = oid[0];
 		r[1] = oid[1];
 	} else {
 		int swap = 0;
@@ -223,7 +212,7 @@ static void builtin_diff_tree(struct rev_info *revs,
 		 * swap them.
 		 */
 		if (ent1->item->flags & UNINTERESTING) {
-			warning("SWAP"); // XXX: WHEN DOES THIS HAPPEN?
+			warning("SWAP");
 			swap = 1;
 		}
 		oid[swap] = &ent0->item->oid;
@@ -232,23 +221,14 @@ static void builtin_diff_tree(struct rev_info *revs,
 		if (sdiff->skip) { // XXX symmetric diff will have 3+ revs; it's simplest to reuse the symdiff result
 			r[swap] = &sdiff->ent0->item->oid;
 			r[1 - swap] = &sdiff->ent1->item->oid;
-//			type[swap] = sdiff->ent0->item->type;
-//			type[1 - swap] = sdiff->ent1->item->type;
 		} else {
 			// XXX assuming 2 revs, reach back up to commits
 			if (revs->pending.nr != 2)
 				BUG("unexpected revs->pending.nr: %d", revs->pending.nr);
 			r[swap] = &revs->pending.objects[0].item->oid;
 			r[1 - swap] = &revs->pending.objects[1].item->oid;
-//			type[swap] = revs->pending.objects[0].item->type;
-//			type[1 - swap] = revs->pending.objects[1].item->type;
 		}
 	}
-
-//	warning(_("ent0->name='%s' r0='%s' type0='%s'"), ent0->name, oid_to_hex(r[0]), type_name(type[0]));
-//	warning(_("ent1->name='%s' r1='%s' type1='%s'"), ent1->name, oid_to_hex(r[1]), type_name(type[1]));
-//	warning(_("merge_base=%d"), merge_base);
-//	warning(_("oid0='%s' oid1='%s'"), oid_to_hex(oid[0]), oid_to_hex(oid[1]));
 
 	revs->diffopt.why.mode = "diff_tree";
 	revs->diffopt.why.oid[0] = r[0];
@@ -639,9 +619,6 @@ int cmd_diff(int argc,
 	}
 	if (rev.prune_data.nr)
 		paths += rev.prune_data.nr;
-
-	// XXX WIP
-//	warning(_("ent.nr=%d blobs=%d"), ent.nr, blobs);
 
 	/*
 	 * Now, do the arguments look reasonable?
