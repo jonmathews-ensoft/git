@@ -25,6 +25,7 @@
 #include "setup.h"
 #include "oid-array.h"
 #include "tree.h"
+#include "hex.h"
 
 #define DIFF_NO_INDEX_EXPLICIT 1
 #define DIFF_NO_INDEX_IMPLICIT 2
@@ -170,14 +171,23 @@ static void builtin_diff_index(struct rev_info *revs,
 	run_diff_index(revs, option);
 }
 
+struct symdiff {
+	struct bitmap *skip;
+	int warn;
+	const char *base, *left, *right;
+	struct object_array_entry *ent0, *ent1;
+};
+
 static void builtin_diff_tree(struct rev_info *revs,
 			      int argc, const char **argv,
-			      struct object_array_entry *ent0,
-			      struct object_array_entry *ent1)
+			      struct object_array_entry *ent0, // I would rather encapsulate this with original object
+			      struct object_array_entry *ent1,
+			      struct symdiff *sdiff)
 {
 	const struct object_id *(oid[2]);
 	struct object_id mb_oid;
 	int merge_base = 0;
+	const struct object_id *(r[2]); // oid closest to rev_info - tag/commit if known - corresponding to oid[]
 
 	while (1 < argc) {
 		const char *arg = argv[1];
@@ -192,6 +202,8 @@ static void builtin_diff_tree(struct rev_info *revs,
 		diff_get_merge_base(revs, &mb_oid);
 		oid[0] = &mb_oid;
 		oid[1] = &revs->pending.objects[1].item->oid;
+		r[0] = oid[0];
+		r[1] = oid[1];
 	} else {
 		int swap = 0;
 
@@ -203,9 +215,29 @@ static void builtin_diff_tree(struct rev_info *revs,
 			swap = 1;
 		oid[swap] = &ent0->item->oid;
 		oid[1 - swap] = &ent1->item->oid;
+
+		if (sdiff->skip) { // XXX symmetric diff will have 3+ revs; it's simplest to reuse the symdiff result
+			r[swap] = &sdiff->ent0->item->oid;
+			r[1 - swap] = &sdiff->ent1->item->oid;
+		} else {
+			// XXX assuming 2 revs, reach back up to commits
+			if (revs->pending.nr != 2)
+				BUG("unexpected revs->pending.nr: %d", revs->pending.nr);
+			r[swap] = &revs->pending.objects[0].item->oid;
+			r[1 - swap] = &revs->pending.objects[1].item->oid;
+		}
 	}
+
+	revs->diffopt.why.mode = "diff_tree";
+	revs->diffopt.why.oid[0] = r[0];
+	revs->diffopt.why.oid[1] = r[1];
+
 	diff_tree_oid(oid[0], oid[1], "", &revs->diffopt);
 	log_tree_diff_flush(revs);
+
+	revs->diffopt.why.mode = NULL;
+	revs->diffopt.why.oid[0] = NULL;
+	revs->diffopt.why.oid[1] = NULL;
 }
 
 static void builtin_diff_combined(struct rev_info *revs,
@@ -288,12 +320,6 @@ static void builtin_diff_files(struct rev_info *revs, int argc, const char **arg
 	}
 	run_diff_files(revs, options);
 }
-
-struct symdiff {
-	struct bitmap *skip;
-	int warn;
-	const char *base, *left, *right;
-};
 
 /*
  * Check for symmetric-difference arguments, and if present, arrange
@@ -389,6 +415,8 @@ static void symdiff_prepare(struct rev_info *rev, struct symdiff *sym)
 	bitmap_unset(map, basepos);	/* unmark the base we want */
 	sym->warn = basecount > 1;
 	sym->skip = map;
+	sym->ent0 = &rev->pending.objects[basepos];
+	sym->ent1 = &rev->pending.objects[rpos];
 }
 
 static void symdiff_release(struct symdiff *sdiff)
@@ -621,7 +649,7 @@ int cmd_diff(int argc,
 			warning(_("%s...%s: multiple merge bases, using %s"),
 				sdiff.left, sdiff.right, sdiff.base);
 		builtin_diff_tree(&rev, argc, argv,
-				  &ent.objects[0], &ent.objects[1]);
+				  &ent.objects[0], &ent.objects[1], &sdiff);
 	} else
 		builtin_diff_combined(&rev, argc, argv,
 				      ent.objects, ent.nr,
