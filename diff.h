@@ -404,6 +404,11 @@ struct diff_options {
 	struct strmap *additional_path_headers;
 
 	int no_free;
+
+	/* The end-points of the diff */
+	struct {
+		const struct object_id *oid[2];
+	} endpoint;
 };
 
 unsigned diff_filter_bit(char status);
